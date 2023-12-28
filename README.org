@@ -1,0 +1,37 @@
+#+title: Org-forester
+#+author: Hanwen Guo
+#+email: g.hanwen@outlook.com
+#+options: toc:t
+
+Org-forester let you create your [[https://www.jonmsterling.com/tfmt-000V.xml][forest]] of notes in org-mode. Dependencies include [[https://github.com/org-roam/org-roam][org-roam]] and [[https://github.com/nobiot/org-transclusion][org-transclusion]].
+
+* TODO Getting Started
+Not implemented yet.
+
+* Roadmap
+- [ ] Edit
+  - [ ] Org-roam integration
+    - [ ] Display context section in Org-roam buffer
+    - [ ] Display neighbors section in Org-roam buffer
+  - [ ] Editing interface
+    - [ ] Easy insertion of transclusion
+    - [ ] Hide ~#+TITLE~ line
+    - [ ] Easy renaming
+    - [ ] Transclusion shows taxon
+- [ ] Export
+  - [ ] Frontmatter (date, author, taxon, etc.)
+  - [ ] Links
+  - [ ] Transclusions
+  - [ ] Emphasis elements
+  - [ ] Plain math without forester macros
+  - [ ] Advanced part of the forester markup language
+    - [ ] Functions defined by ~\def~
+    - [ ] Import / Export
+    - [ ] Configured transclusion
+    - [ ] Fluid Binding
+    - [ ] Query
+    - [ ] XML attributes
+    - [ ] Object system
+
+* License
+Org-forester is licensed under a GPLv3 license. For a full copy of the license, refer to [[./LICENSE][LICENSE]].
