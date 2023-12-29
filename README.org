@@ -3,15 +3,33 @@
 #+email: g.hanwen@outlook.com
 #+options: toc:t
 
-Org-forester let you create your [[https://www.jonmsterling.com/tfmt-000V.xml][forest]] of notes in org-mode. Dependencies include [[https://github.com/org-roam/org-roam][org-roam]] and [[https://github.com/nobiot/org-transclusion][org-transclusion]].
+Note: Org-forester is in its early phase. 
 
-* TODO Getting Started
-Not implemented yet.
+Org-forester let you create your [[https://www.jonmsterling.com/tfmt-000V.xml][forest]] of notes in org-mode, built on [[https://github.com/org-roam/org-roam][org-roam]] and [[https://github.com/nobiot/org-transclusion][org-transclusion]]. It is meant to be used along with [[https://www.jonmsterling.com/jms-005P.xml][forester]], but it can also be used standalone. The plan is to make it able to edit and navigate your forest in Emacs and Org-mode and to export it into forester markups which can be further processed. 
+
+* Installation
+Currently, the only way to install org-forester is clone the repository and add it to your ~load-path~ (or use package managers).
+
+* Configuration
+** With ~use-package~
+#+begin_src emacs-lisp
+  (use-package org-roam)
+
+  (use-package org-transclusion
+    :hook (org-mode . org-transclusion-mode))
+
+  (use-package org-forester
+    :config
+    (global-org-forester-mode))
+#+end_src
+
+* Getting Started
+Following the [[https://www.jonmsterling.com/tfmt-000W.xml][though behind forester]], org-forester presumes that all the notes each contains and only contains a single org-mode headline as its title, and encourages using transclusion to create contexts. To add a transclusion to a org-roam node, use ~M-x org-forester-add-transclusion~ (default binds to ~C-c n t~). Extra sections are added to org-roam buffer, allowing navigating through contexts and related notes.
 
 * Roadmap
-- [ ] Edit
-  - [ ] Org-roam integration
-    - [ ] Display context section in Org-roam buffer
+- [-] Edit
+  - [-] Org-roam integration
+    - [X] Display context section in Org-roam buffer
     - [ ] Display neighbors section in Org-roam buffer
   - [ ] Editing interface
     - [ ] Easy insertion of transclusion
