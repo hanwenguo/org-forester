@@ -30,26 +30,39 @@ Following the [[https://www.jonmsterling.com/tfmt-000W.xml][though behind forest
 - [-] Edit
   - [-] Org-roam integration
     - [X] Display context section in Org-roam buffer
+    - [-] Display related section in Org-roam buffer (untested)
+    - [-] Display bibliography section in Org-roam buffer (untested)
     - [ ] Display neighbors section in Org-roam buffer
-  - [ ] Editing interface
-    - [ ] Easy insertion of transclusion
+    - [ ] Display contribution information
+  - [-] Editing interface
+    - [X] Easy insertion of transclusion
+    - [ ] Easy insertion of citation
+    - [ ] Easy creation of new notes
     - [ ] Hide ~#+TITLE~ line
     - [ ] Easy renaming
+    - [ ] LaTeX preview respecting forester markup
     - [ ] Transclusion shows taxon
 - [ ] Export
   - [ ] Frontmatter (date, author, taxon, etc.)
   - [ ] Links
   - [ ] Transclusions
   - [ ] Emphasis elements
-  - [ ] Plain math without forester macros
+  - [ ] Plain LaTeX fragments without forester macros
   - [ ] Advanced part of the forester markup language
     - [ ] Functions defined by ~\def~
-    - [ ] Import / Export
+    - [ ] Import / Export definitions
     - [ ] Configured transclusion
     - [ ] Fluid Binding
     - [ ] Query
     - [ ] XML attributes
     - [ ] Object system
+
+* Known limitations
+- Edit
+  - Org-roam integration
+    - Citations section cannot show references referred by org-ref links or id links in transcluded contents; org-cite citation should work
+  - Editing interface
+    - It is hard to preview LaTeX fragments with forester markup; only raw LaTeX can be previewed by ~org-latex-preview~
 
 * License
 Org-forester is licensed under a GPLv3 license. For a full copy of the license, refer to [[./LICENSE][LICENSE]].
