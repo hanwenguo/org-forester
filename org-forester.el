@@ -79,10 +79,27 @@ Used when creating notes."
   :group 'org-forester
   :type '(alist :key-type string :value-type string))
 
-(defcustom org-forest-visit-context-inplace nil
-  "When non-nil, visiting the context will jump to current node."
+(defcustom org-forester-roam-sections
+  '(org-forester-roam-contexts-section org-forester-citations-section org-forester-related-nodes-section)
+  "The extra sections to show in Org-roam buffer."
   :group 'org-forester
-  :type 'sexp)
+  :type '(sexp))
+
+(defcustom org-forester-roam-metadata-functions
+  '(('org-forester-roam-contexts-section #'org-forester-roam-node-metadata)
+    ('org-forester-citations-section #'org-forester-roam-node-metadata)
+    ('org-forester-related-nodes-section #'org-forester-roam-node-metadata))
+  "The map between section and metadata functions."
+  :group 'org-forester
+  :type '(alist :key-type function :value-type function))
+
+(defcustom org-forester-roam-preview-functions
+  '((#'org-forester-roam-contexts-section . #'org-forester-roam-preview-get-contents)
+    (#'org-forester-citations-section . #'org-forester-roam-preview-get-contents)
+    (#'org-forester-related-nodes-section . #'org-forester-roam-preview-get-contents))
+  "The map between section and preview functions."
+  :group 'org-forester
+  :type '(alist :key-type function :value-type function))
 
 ;;;; Faces
 (defface org-forester-metadata
@@ -145,6 +162,136 @@ which would be the OLD-FUN and passes ARGS to it.."
   (org-transclusion-after-save-buffer))
 
 ;;;; Org-roam buffer sections
+;;;;; Metadata
+(defalias 'org-forester--file-title #'org-roam-db--file-title)
+
+(defun org-forester--file-date ()
+  "In current Org buffer, get the date.
+If there is no date, return the date of today."
+  (if-let ((raw-dates (cdr (assoc "DATE" (org-collect-keywords '("date")))))
+           (dates (cl-loop for date in raw-dates
+                           if (not (string-empty-p date))
+                           collect date)))
+      (string-join dates  ", ")
+    (format-time-string org-forester-date-format (current-time))))
+
+(defun org-forester--file-author ()
+  "In current Org-buffer, get the author.
+If there is no author, return the value of `org-forester-default-author'."
+  (if-let ((raw-authors (cdr (assoc "AUTHOR" (org-collect-keywords '("author")))))
+           (authors (cl-loop for author in raw-authors
+                             if (not (string-empty-p author))
+                             collect author)))
+      (string-join authors ", ")
+    org-forester-default-author))
+
+(cl-defmethod org-forester-node-date ((node org-roam-node))
+  "Get the date of NODE."
+  (save-excursion (org-roam-with-file (org-roam-node-file node) nil
+                    (org-forester--file-date))))
+
+(cl-defmethod org-forester-node-author ((node org-roam-node))
+  "Get the author of NODE."
+  (save-excursion (org-roam-with-file (org-roam-node-file node) nil
+                    (org-forester--file-author))))
+
+(defun org-forester-roam-node-metadata (node)
+  "Get the metadata string for NODE."
+  (concat (format " created on %s"
+                  (propertize
+                   (org-forester-node-date node) 'font-lock-face 'org-forester-metadata))
+          (format " by %s"
+                  (propertize
+                   (org-forester-node-author node) 'font-lock-face 'org-forester-metadata))))
+
+(defclass org-forester-roam-node-section (org-roam-node-section)
+  ((keymap :initform 'org-roam-node-map))
+  "A `magit-section' used by `org-forester' to outline NODE in its own heading.")
+
+(cl-defun org-forester-roam-node-insert-section (&key node point metadata-fn preview-fn)
+  "Insert section for a link about NODE.
+
+NODE is an `org-roam-node' to be shown.
+
+POINT is a character position where the link is located.
+
+METADATA-FN is the function used to render metadata.
+
+PREVIEW-FN is the function used to provide preview contents.
+
+Despite the name, this function actually inserts 2 sections at
+the same time:
+
+1. `org-forester-roam-node-section' for a heading that describes
+   NODE. Acts as a parent section of the following one.
+
+2. `org-forester-roam-preview-section' for a preview content that comes
+   from NODE's file. Acts a child section of the previous
+   one."
+  (magit-insert-section section (org-roam-node-section)
+    (insert (propertize (org-roam-node-title node)
+                        'font-lock-face 'org-roam-title))
+    (insert (funcall metadata-fn node))
+    (magit-insert-heading)
+    (oset section node node)
+    (magit-insert-section section (org-forester-roam-preview-section nil t)
+      (insert (string-trim (org-roam-fontify-like-in-org-mode
+                            (funcall preview-fn (org-roam-node-file node))))
+              "\n")
+      (oset section file (org-roam-node-file node))
+      (oset section point point))))
+
+;;;;; Preview contexts
+(defvar org-forester-roam-preview-map
+  (let ((map (make-sparse-keymap)))
+    (set-keymap-parent map org-roam-preview-map)
+    (define-key map [remap org-roam-preview-visit] 'org-forester-roam-preview-visit)
+    map)
+  "Keymap for `org-forester-roam-preview-section's.")
+
+(defclass org-forester-roam-preview-section (org-roam-preview-section)
+  ((keymap :initform 'org-forester-roam-context-preview-map)
+   ;; (file :initform nil)
+   ;; (point :initform nil)
+   )
+  "A `magit-section' used by `org-forester' to contain preview content.
+The preview content comes from FILE, and the link is at POINT.")
+
+(defun org-forester-roam-preview-get-contents (file)
+  "Get preview content for FILE.
+This function returns the all contents under the first headline
+up to the end of file."
+  (save-excursion
+    (org-roam-with-temp-buffer file
+      (org-with-wide-buffer
+       (org-with-point-at 1
+         (let ((beg (save-excursion
+                      (org-next-visible-heading 1)
+                      (forward-line)
+                      (point)))
+               (end (point-max)))
+           (string-trim (buffer-substring-no-properties beg end))))))))
+
+(defun org-forester-roam-context-preview-visit (file point &optional other-window)
+  "Visit FILE and return the visited buffer.
+If `org-forester-visit-context-inplace' is non-nil, visit FILE at POINT.
+With OTHER_WINDOW non-nill do so in another window.
+In interactive calls OTHER-WINDOW is set with `universal-argument'."
+  (interactive (list (org-roam-buffer-file-at-point 'assert)
+                     (oref (magit-current-section) point)
+                     current-prefix-arg))
+  (let ((buf (find-file-noselect file))
+        (display-buffer-fn (if other-window
+                               #'switch-to-buffer-other-window
+                             #'pop-to-buffer-same-window)))
+    (funcall display-buffer-fn buf)
+    (with-current-buffer buf
+      (widen)
+      (goto-char (point-min))
+      (org-next-visible-heading 1))
+    (when (org-invisible-p) (org-fold-show-context))
+    buf))
+
 ;;;;; Context (transcluding parent)
 (cl-defstruct (org-forester-roam-context (:constructor org-forester-roam-context-create)
                                          (:copier nil))
@@ -179,38 +326,6 @@ Sorts by title."
   (string< (org-roam-node-title (org-forester-roam-context-source-node a))
            (org-roam-node-title (org-forester-roam-context-source-node b))))
 
-(defalias 'org-forester--file-title #'org-roam-db--file-title)
-
-(defun org-forester--file-date ()
-  "In current Org buffer, get the date.
-If there is no date, return the date of today."
-  (if-let ((raw-dates (cdr (assoc "DATE" (org-collect-keywords '("date")))))
-           (dates (cl-loop for date in raw-dates
-                           if (not (string-empty-p date))
-                           collect date)))
-      (string-join dates  ", ")
-    (format-time-string org-forester-date-format (current-time))))
-
-(defun org-forester--file-author ()
-  "In current Org-buffer, get the author.
-If there is no author, return the value of `org-forester-default-author'."
-  (if-let ((raw-authors (cdr (assoc "AUTHOR" (org-collect-keywords '("author")))))
-           (authors (cl-loop for author in raw-authors
-                             if (not (string-empty-p author))
-                             collect author)))
-      (string-join authors ", ")
-    org-forester-default-author))
-
-(cl-defmethod org-forester-node-date ((node org-roam-node))
-  "Get the date of NODE."
-  (save-excursion (org-roam-with-file (org-roam-node-file node) nil
-                    (org-forester--file-date))))
-
-(cl-defmethod org-forester-node-author ((node org-roam-node))
-  "Get the author of NODE."
-  (save-excursion (org-roam-with-file (org-roam-node-file node) nil
-                    (org-forester--file-author))))
-
 (cl-defun org-forester-roam-contexts-section (node &key (show-context-p nil))
   "The contexts section for NODE.
 
@@ -226,88 +341,131 @@ this predicate is not nil."
                        (funcall show-context-p context)))
           (let ((source-node (org-forester-roam-context-source-node context))
                 (point (org-forester-roam-context-point context)))
-            (magit-insert-section section (org-roam-node-section)
-              (insert (propertize (org-roam-node-title source-node)
-                                  'font-lock-face 'org-roam-title))
-              (magit-insert-heading)
-              (oset section node source-node)
-              (magit-insert-section _ (org-forester-roam-context-metadata-section)
-                (insert (concat (format "on %s"
-                                        (propertize
-                                         (org-forester-node-date source-node) 'font-lock-face 'org-forester-metadata))
-                                (format " by %s"
-                                        (propertize
-                                         (org-forester-node-author source-node) 'font-lock-face 'org-forester-metadata)))
-                        "\n"))
-              (magit-insert-section section (org-forester-roam-context-preview-section nil t)
-                (insert (string-trim (org-roam-fontify-like-in-org-mode
-                                      (org-forester-roam-context-preview-get-contents (org-roam-node-file source-node))))
-                        "\n")
-                (oset section file (org-roam-node-file source-node))
-                (oset section point point))))
-          ))
+            (org-forester-roam-node-insert-section
+             :node source-node
+             :point point
+             :metadata-fn #'org-forester-roam-node-metadata
+             :preview-fn #'org-forester-roam-preview-get-contents))))
       (insert ?\n))))
 
-;;;;; Preview contexts
-(defvar org-forester-roam-context-preview-map
-  (let ((map (make-sparse-keymap)))
-    (set-keymap-parent map org-roam-preview-map)
-    (define-key map [remap org-roam-preview-visit] 'org-forester-roam-context-preview-visit)
-    map)
-  "Keymap for `org-forester-roam-context-preview-section's.")
+;;;;; Related nodes (nodes current node links to)
+;; TODO: Test Related nodes
+(cl-defstruct (org-forester-related-node (:constructor org-forester-related-node-create)
+                                         (:copier nil))
+  target-node pos properties)
 
-(defclass org-forester-roam-context-preview-section (org-roam-preview-section)
-  ((keymap :initform 'org-forester-roam-context-preview-map)
-   ;; (file :initform nil)
-   ;; (point :initform nil)
-   )
-  "A `magit-section' used by `org-forester' to contain preview content.
-The preview content comes from FILE, and the link is at POINT.")
+(cl-defmethod org-roam-populate ((related-node org-forester-related-node))
+  "Populate RELATED-NODE from database."
+  (setf (org-forester-related-node-target-node related-node)
+        (org-roam-populate (org-forester-related-node-target-node related-node)))
+  related-node)
 
-(defun org-forester-roam-context-preview-default-function ()
-  "Return the preview content.
-This function returns the all contents under the current
-headline, up to the next headline."
-  (let ((beg (save-excursion
-               (org-next-visible-heading 1)
-               (forward-line)
-               (point)))
-        (end (point-max)))
-    (string-trim (buffer-substring-no-properties beg end))))
+(defun org-forester-related-nodes-get (node)
+  "Return the related nodes for NODE."
+  (let ((links (org-roam-db-query
+                ;; [:select :distinct [links:dest links:pos links:properties]
+                ;;  :from links
+                ;;  :where (= links:source $s1)
+                ;;  :and :not-exists
+                ;;  (:select 1
+                ;;   :from refs
+                ;;   :where (= refs:node-id links:dest))]
+                [:select :distinct [links:dest links:pos links:properties]
+                 :from links
+                 :left-join refs :on (= links:dest refs:node-id)
+                 :where (= links:source $s1)
+                 :and (= refs:node-id nil)]
+                (org-roam-node-id node)))
+        related-nodes)
+    (pcase-dolist (`(,target-id ,pos ,properties) links)
+      (push (org-roam-populate
+             (org-forester-related-node-create
+              :target-node (org-roam-node-create :id target-id)
+              :pos pos
+              :properties properties))
+            related-nodes))
+    related-nodes))
 
-(defun org-forester-roam-context-preview-get-contents (file)
-  "Get preview content for FILE."
-  (save-excursion
-    (org-roam-with-temp-buffer file
-      (org-with-wide-buffer
-       (org-with-point-at 1
-         (org-forester-roam-context-preview-default-function))))))
+(defun org-forester-related-nodes-sort (a b)
+  "Default sorting function for citations A and B.
+Sorts by occurance order in source."
+  (< (org-forester-related-node-pos a)
+     (org-forester-related-node-pos b)))
 
-(defun org-forester-roam-context-preview-visit (file point &optional other-window)
-  "Visit FILE and return the visited buffer.
-If `org-forest-visit-context-inplace' is non-nil, visit FILE at POINT.
-With OTHER_WINDOW non-nill do so in another window.
-In interactive calls OTHER-WINDOW is set with `universal-argument'."
-  (interactive (list (org-roam-buffer-file-at-point 'assert)
-                     (oref (magit-current-section) point)
-                     current-prefix-arg))
-  (let ((buf (find-file-noselect file))
-        (display-buffer-fn (if other-window
-                               #'switch-to-buffer-other-window
-                             #'pop-to-buffer-same-window)))
-    (funcall display-buffer-fn buf)
-    (with-current-buffer buf
-      (widen)
-      (if org-forest-visit-context-inplace
-          (progn
-            (org-transclusion-remove-all)
-            (goto-char point)
-            (org-transclusion-add-all))
-        (progn
-          (goto-char (point-min))
-          (org-next-visible-heading 1))))
-    (when (org-invisible-p) (org-fold-show-context))
-    buf))
+(defun org-forester-related-nodes-section (node)
+  "The related nodes section for NODE."
+  (when-let ((related-nodes (seq-sort #'org-forester-related-nodes-sort
+                                      (org-forester-related-nodes-get node))))
+    (magit-insert-section (org-forester-roam-related-nodes)
+      (magit-insert-heading "Related: ")
+      (dolist (related-node related-nodes)
+        (let ((target-node (org-forester-related-node-target-node related-node))
+              (point (org-forester-related-node-pos related-node)))
+          (org-forester-roam-node-insert-section
+           :node target-node
+           :point point
+           :metadata-fn #'org-forester-roam-node-metadata
+           :preview-fn #'org-forester-roam-preview-get-contents)))
+      (insert ?\n))))
+
+;;;;; Bibliography (ref nodes that this node cites)
+;; TODO: Test bibliography
+(cl-defstruct (org-forester-citation (:constructor org-forester-citation-create)
+                                     (:copier nil))
+  target-node ref pos properties)
+
+(cl-defmethod org-roam-populate ((citation org-forester-citation))
+  "Populate CITATION from database."
+  (setf (org-forester-citation-target-node citation)
+        (org-roam-populate (org-forester-citation-target-node citation)))
+  citation)
+
+(defun org-forester-citations-get (node)
+  "Return the bibliography for NODE."
+  (let ((refs (org-roam-db-query [:select :distinct [links:dest refs:ref links:pos links:properties]
+                                  :from links
+                                  :left-join refs
+                                  :where (= links:source $s1)
+                                  :and (= refs:node-id links:dest)
+                                  :union
+                                  :select :distinct [citations:node-id refs:ref citations:pos citations:properties]
+                                  :from citations
+                                  :left-join refs
+                                  :where (= citations:note-id $s1)
+                                  :and (= citations:cite-key refs:ref)]
+                                 (org-roam-node-id node)))
+        citations)
+    (pcase-dolist (`(,target-id ,ref ,pos ,properties) refs)
+      (push (org-roam-populate
+             (org-forester-citation-create
+              :target-node (org-roam-node-create :id target-id)
+              :ref ref
+              :pos pos
+              :properties properties))
+            citations))
+    citations))
+
+(defun org-forester-citations-sort (a b)
+  "Default sorting function for citations A and B.
+Sorts by occurance order in source."
+  (< (org-forester-citation-pos a)
+     (org-forester-citation-pos b)))
+
+(defun org-forester-citations-section (node)
+  "The citations section for NODE."
+  (when-let ((citations (seq-sort #'org-forester-citations-sort
+                                  (org-forester-citations-get node))))
+    (magit-insert-section (org-forester-roam-citations)
+      (magit-insert-heading "References: ")
+      (dolist (citation citations)
+        (let ((target-node (org-forester-citation-target-node citation))
+              (point (org-forester-citation-pos citation)))
+          (org-forester-roam-node-insert-section
+           :node target-node
+           :point point
+           :metadata-fn #'org-forester-roam-node-metadata
+           :preview-fn #'org-forester-roam-preview-get-contents)))
+      (insert ?\n))))
 
 ;;;;; TODO: Neighbors (nodes with common source node)
 
@@ -335,7 +493,7 @@ If current line is not empty, insert under it."
                   (end-of-line)
                   (insert ?\n))
                 (insert
-                 "#+transclude: "
+                 "#+transclu: "
                  (org-link-make-string
                   (concat "id:" id)
                   description)
@@ -346,6 +504,10 @@ If current line is not empty, insert under it."
             (user-error "Transcluding needs an existing node"))))
     (deactivate-mark)))
 
+(defun org-forester-add-citation ()
+  "TODO: Add a citation at point."
+  (user-error "Unimplemented"))
+
 (defvar org-forester-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "C-c n t") #'org-forester-add-transclusion)
@@ -354,7 +516,7 @@ If current line is not empty, insert under it."
 
 ;;;###autoload
 (define-minor-mode org-forester-mode
-  "Toggle org-forester-mode."
+  "Toggle `org-forester-mode'."
   :keymap org-forester-mode-map
   :lighter org-forester-lighter
   :global nil
@@ -403,9 +565,10 @@ This runs in `kill-buffer-hook'."
       (advice-add #'org-roam-db-map-links :around #'org-forester-roam-db-map-links))
     (add-hook 'kill-buffer-hook #'org-forester--maybe-clean-advice))
    ((derived-mode-p #'org-roam-mode)
-    (when (not (memq #'org-forester-roam-contexts-section org-roam-mode-sections))
-      (make-local-variable 'org-roam-mode-sections)
-      (add-to-list 'org-roam-mode-sections #'org-forester-roam-contexts-section)))))
+    ;; (make-local-variable 'org-roam-mode-sections)
+    (dolist (section org-forester-roam-sections)
+      (when (not (memq section org-roam-mode-sections))
+        (add-to-list 'org-roam-mode-sections section))))))
 
 (defun org-forester-disable ()
   "Disable the Org-forester minor mode."
