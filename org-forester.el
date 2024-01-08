@@ -4,7 +4,7 @@
 
 ;; Author: Hanwen Guo <g.hanwen@outlook.com>
 ;; URL: https://github.com/g-hanwen/org-forester
-;; Version: 0.0.1
+;; Version: 0.1.0
 ;; Package-Requires: ((emacs "27.1") (org "9.4") (org-roam "2.2") (org-transclusion "1.3"))
 ;; Keywords: org-mode, forester, note
 
@@ -148,6 +148,36 @@ Used when creating notes."
           :values $v1]
          (vector (point) source path "transclusion" properties))))))
 
+(defun org-forester-roam-db-insert-link (link)
+  "Insert link data for LINK at current point into the Org-roam cache.
+Meant to be used as an advice overriding `org-roam-db-insert-link'.
+The difference is this function recognizes citations in transcluded content
+while discarding regular links in transcluded content."
+  (save-excursion
+    (goto-char (org-element-property :begin link))
+    (let ((type (org-element-property :type link))
+          (path (org-element-property :path link))
+          (source (org-roam-id-at-point))
+          (properties (list :outline (ignore-errors
+                                       ;; This can error if link is not under any headline
+                                       (org-get-outline-path 'with-self 'use-cache)))))
+      ;; For Org-ref links, we need to split the path into the cite keys
+      (when (and source path)
+        (cond
+         ((and (boundp 'org-ref-cite-types)
+               (or (assoc type org-ref-cite-types)
+                   (member type org-ref-cite-types)))
+          (org-roam-db-query
+           [:insert :into citations
+            :values $v1]
+           (mapcar (lambda (k) (vector source k (point) properties))
+                   (org-roam-org-ref-path-to-keys path))))
+         ((not (get-char-property (point) 'org-transclusion-type))
+          (org-roam-db-query
+           [:insert :into links
+            :values $v1]
+           (vector (point) source path type properties))))))))
+
 (defun org-forester-roam-db-map-links (old-fun &rest args)
   "Insert all links in the current buffer.
 Deal with transclusions properly.
@@ -155,11 +185,11 @@ Meant to be used as an advice around `org-roam-db-map-links'
 which would be the OLD-FUN and passes ARGS to it.."
   ;; Disable org-transclusion-mode before scanning for links
   (org-transclusion-before-save-buffer)
-  (apply old-fun args)
   (org-forester-roam-db-map-transclusions
    (list #'org-forester-roam-db-insert-transclusion))
   ;; Enable org-transclusion-mode after scanning for links
-  (org-transclusion-after-save-buffer))
+  (org-transclusion-after-save-buffer)
+  (apply old-fun args))
 
 ;;;; Org-roam buffer sections
 ;;;;; Metadata
@@ -250,7 +280,7 @@ the same time:
   "Keymap for `org-forester-roam-preview-section's.")
 
 (defclass org-forester-roam-preview-section (org-roam-preview-section)
-  ((keymap :initform 'org-forester-roam-context-preview-map)
+  ((keymap :initform 'org-forester-roam-preview-map)
    ;; (file :initform nil)
    ;; (point :initform nil)
    )
@@ -363,18 +393,12 @@ this predicate is not nil."
 (defun org-forester-related-nodes-get (node)
   "Return the related nodes for NODE."
   (let ((links (org-roam-db-query
-                ;; [:select :distinct [links:dest links:pos links:properties]
-                ;;  :from links
-                ;;  :where (= links:source $s1)
-                ;;  :and :not-exists
-                ;;  (:select 1
-                ;;   :from refs
-                ;;   :where (= refs:node-id links:dest))]
-                [:select :distinct [links:dest links:pos links:properties]
+                [:select :distinct [links:dest links:pos links:properties refs:node-id]
                  :from links
                  :left-join refs :on (= links:dest refs:node-id)
                  :where (= links:source $s1)
-                 :and (= refs:node-id nil)]
+                 :and (not (= links:type "transclusion"))
+                 :and refs:node-id :is-null]
                 (org-roam-node-id node)))
         related-nodes)
     (pcase-dolist (`(,target-id ,pos ,properties) links)
@@ -424,15 +448,15 @@ Sorts by occurance order in source."
   "Return the bibliography for NODE."
   (let ((refs (org-roam-db-query [:select :distinct [links:dest refs:ref links:pos links:properties]
                                   :from links
-                                  :left-join refs
+                                  :inner-join refs
+                                  :on (= refs:node-id links:dest)
                                   :where (= links:source $s1)
-                                  :and (= refs:node-id links:dest)
                                   :union
                                   :select :distinct [citations:node-id refs:ref citations:pos citations:properties]
                                   :from citations
-                                  :left-join refs
-                                  :where (= citations:note-id $s1)
-                                  :and (= citations:cite-key refs:ref)]
+                                  :inner-join refs
+                                  :on (= citations:cite-key refs:ref)
+                                  :where (= citations:node-id $s1)]
                                  (org-roam-node-id node)))
         citations)
     (pcase-dolist (`(,target-id ,ref ,pos ,properties) refs)
@@ -470,6 +494,7 @@ Sorts by occurance order in source."
 ;;;;; TODO: Neighbors (nodes with common source node)
 
 ;;;; Commands
+;;;###autoload
 (defun org-forester-add-transclusion (&optional filter-fn sort-fn)
   "Add a transclusion at point. The target node must already exists.
 
@@ -493,7 +518,7 @@ If current line is not empty, insert under it."
                   (end-of-line)
                   (insert ?\n))
                 (insert
-                 "#+transclu: "
+                 "#+transclude: "
                  (org-link-make-string
                   (concat "id:" id)
                   description)
@@ -534,7 +559,8 @@ If current line is not empty, insert under it."
 (defun org-forester-remove-advice ()
   "Remove advices added by Org-forester."
   (interactive)
-  (advice-remove #'org-roam-db-map-links #'org-forester-roam-db-map-links))
+  (advice-remove #'org-roam-db-map-links #'org-forester-roam-db-map-links)
+  (advice-remove #'org-roam-db-insert-link #'org-forester-roam-db-insert-link))
 
 (defun org-forester--maybe-clean-advice ()
   "Remove advices if there is no buffer with org-forester-mode enabled.
@@ -546,9 +572,9 @@ This runs in `kill-buffer-hook'."
 
 ;;;###autoload
 (define-globalized-minor-mode global-org-forester-mode
-  org-forester-mode #'org-forester-enable
+  org-forester-mode org-forester-enable
   :group 'org-forester
-  :predicate '(#'org-mode #'org-roam-mode)
+  :predicate '(org-mode org-roam-mode)
   (if global-org-forester-mode
       (when (not (advice-member-p #'org-forester-roam-db-map-links #'org-roam-db-map-links))
         (advice-add #'org-roam-db-map-links :around #'org-forester-roam-db-map-links))
@@ -563,6 +589,8 @@ This runs in `kill-buffer-hook'."
     (add-to-invisibility-spec 'org-forester)
     (when (not (advice-member-p #'org-forester-roam-db-map-links #'org-roam-db-map-links))
       (advice-add #'org-roam-db-map-links :around #'org-forester-roam-db-map-links))
+    (when (not (advice-member-p #'org-forester-roam-db-insert-link #'org-roam-db-insert-link))
+      (advice-add #'org-roam-db-insert-link :override #'org-forester-roam-db-insert-link))
     (add-hook 'kill-buffer-hook #'org-forester--maybe-clean-advice))
    ((derived-mode-p #'org-roam-mode)
     ;; (make-local-variable 'org-roam-mode-sections)

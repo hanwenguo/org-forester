@@ -30,14 +30,12 @@ Following the [[https://www.jonmsterling.com/tfmt-000W.xml][though behind forest
 - [-] Edit
   - [-] Org-roam integration
     - [X] Display context section in Org-roam buffer
-    - [-] Display related section in Org-roam buffer (untested)
-    - [-] Display bibliography section in Org-roam buffer (untested)
+    - [X] Display related section in Org-roam buffer
+    - [X] Display bibliography section in Org-roam buffer
     - [ ] Display neighbors section in Org-roam buffer
     - [ ] Display contribution information
   - [-] Editing interface
     - [X] Easy insertion of transclusion
-    - [ ] Easy insertion of citation
-    - [ ] Easy creation of new notes
     - [ ] Hide ~#+TITLE~ line
     - [ ] Easy renaming
     - [ ] LaTeX preview respecting forester markup
@@ -59,8 +57,6 @@ Following the [[https://www.jonmsterling.com/tfmt-000W.xml][though behind forest
 
 * Known limitations
 - Edit
-  - Org-roam integration
-    - Citations section cannot show references referred by org-ref links or id links in transcluded contents; org-cite citation should work
   - Editing interface
     - It is hard to preview LaTeX fragments with forester markup; only raw LaTeX can be previewed by ~org-latex-preview~
 
