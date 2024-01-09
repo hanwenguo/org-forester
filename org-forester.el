@@ -101,6 +101,14 @@ Used when creating notes."
   :group 'org-forester
   :type '(alist :key-type function :value-type function))
 
+(defcustom org-forester-roam-preview-postrender-functions (list)
+  "Functions to run after every Org-forester section in Org-roam buffer is rendered.
+Each function accepts two arguments: the
+begin and end position of current section in current buffer, and
+is run with the Org-roam buffer as the current buffer."
+  :group 'org-forester
+  :type 'hook)
+
 ;;;; Faces
 (defface org-forester-metadata
   '((((class color) (background light)) :foreground "grey60")
@@ -264,12 +272,16 @@ the same time:
     (insert (funcall metadata-fn node))
     (magit-insert-heading)
     (oset section node node)
-    (magit-insert-section section (org-forester-roam-preview-section nil t)
-      (insert (string-trim (org-roam-fontify-like-in-org-mode
-                            (funcall preview-fn (org-roam-node-file node))))
-              "\n")
-      (oset section file (org-roam-node-file node))
-      (oset section point point))))
+    (let ((beg (point))
+          (end))
+      (magit-insert-section section (org-forester-roam-preview-section nil t)
+        (insert (string-trim (org-roam-fontify-like-in-org-mode
+                              (funcall preview-fn (org-roam-node-file node))))
+                "\n")
+        (setq end (point))
+        (oset section file (org-roam-node-file node))
+        (oset section point point))
+      (run-hook-with-args 'org-forester-roam-preview-postrender-functions beg end))))
 
 ;;;;; Preview contexts
 (defvar org-forester-roam-preview-map
