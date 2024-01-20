@@ -1,20 +1,7 @@
-((nil
-  (time-stamp-format . "%02d %:B %Y")
-  (time-stamp-start . "modified:[       ]+\\\\?")
-  (time-stamp-end . "$")
-  ;; "Last modified in source code files are at line 20"
-  (time-stamp-line-limit . 20)
-  ;; Need this locale to be "C" or "en_US.UTF-8" or something to standardize the
-  ;; time stamp with English
-  (system-time-locale . "C"))
-  (fill-column . 80)
-  (indent-tabs-mode . nil)
-  (coding . utf-8)
-  (require-final-newline: t)
-  (sentence-end-double-space: t)
+((fill-column . 80)
+ (coding . utf-8)
+ (require-final-newline: t)
  (emacs-lisp-mode
-  (fill-column . 110)
-  (indent-tabs-mode . nil)
   (elisp-lint-ignored-validators . ("byte-compile" "package-lint"))
   (elisp-lint-indent-specs . ((describe . 1)
                               (it . 1)
