@@ -15,3 +15,6 @@ refile/
 /config.mk
 /doc/manual.html
 /.eldev/
+.cask
+*~
+*.~undo-tree
