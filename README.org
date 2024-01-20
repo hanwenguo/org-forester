@@ -3,6 +3,8 @@
 #+email: g.hanwen@outlook.com
 #+options: toc:t
 
+This branch is a standalone version which forks the code of org-roam and org-transclusion. 
+
 Note: Org-forester is in its early phase. 
 
 Org-forester let you create your [[https://www.jonmsterling.com/tfmt-000V.xml][forest]] of notes in org-mode, built on [[https://github.com/org-roam/org-roam][org-roam]] and [[https://github.com/nobiot/org-transclusion][org-transclusion]]. It is meant to be used along with [[https://www.jonmsterling.com/jms-005P.xml][forester]], but it can also be used standalone. The plan is to make it able to edit and navigate your forest in Emacs and Org-mode and to export it into forester markups which can be further processed. 
