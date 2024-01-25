@@ -72,6 +72,7 @@ Prerequisites include [[https://github.com/nobiot/org-transclusion][org-transclu
 (use-package org-forester
   :bind (("C-c n l" . org-forester-buffer-toggle))
   :config
+  (setq org-forester-directory (expand-file-name "~/org/"))
   (defun org-forester--preview-latex ()
     (org--latex-preview-region (point-min) (point-max)))
     (add-to-list 'org-forester-buffer-postrender-functions

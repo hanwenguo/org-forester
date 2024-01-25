@@ -49,6 +49,11 @@
   :group 'org
   :prefix "org-forester-")
 
+(defcustom org-forester-directory (expand-file-name "~/org/")
+  "The default directory for Org-forester."
+  :group 'org-forester
+  :type 'directory)
+
 (defcustom org-forester-buffer-sections
   (list #'org-forester-contexts-section
         #'org-forester-backlinks-section
@@ -187,7 +192,7 @@ In interactive calls OTHER-WINDOW is set with `universal-argument'."
   (let ((inhibit-read-only t))
     (erase-buffer)
     (org-forester-section-mode)
-    (setq-local default-directory org-forester-buffer-current-directory)
+    (setq-local default-directory org-forester-directory)
     (run-hooks 'org-forester-buffer-prerender-functions)
     (org-forester-section-insert-section (org-forester)
       (insert (format "#+title: Sections for %s\n" org-forester-buffer-current-title))
@@ -285,7 +290,7 @@ Use FILTER to filter links."
     (cl-remove-duplicates references)))
 
 (defun org-forester-directory-files (&optional files-matching-regexp omit-current)
-  "Return list of absolute file paths in `org-forester-buffer-current-directory'.
+  "Return list of absolute file paths in `org-forester-directory'.
 
 With optional FILES-MATCHING-REGEXP, restrict files to those
 matching the given regular expression.
@@ -297,7 +302,7 @@ With optional OMIT-CURRENT, do not include the current file."
                  (lambda (file)
                    (not (backup-file-name-p file)))
                  (directory-files-recursively
-                  org-forester-buffer-current-directory
+                  org-forester-directory
                   directory-files-no-dot-files-regexp
                   nil
                   nil
@@ -310,8 +315,8 @@ With optional OMIT-CURRENT, do not include the current file."
                      (string-match-p files-matching-regexp
                                      (when-let (((file-name-absolute-p f))
                                                 (file-name (expand-file-name f))
-                                                ((string-prefix-p org-forester-buffer-current-directory file-name)))
-                                       (substring-no-properties file-name (length org-forester-buffer-current-directory)))))
+                                                ((string-prefix-p org-forester-directory file-name)))
+                                       (substring-no-properties file-name (length org-forester-directory)))))
                    files)))
     files))
 
@@ -326,7 +331,7 @@ With optional OMIT-CURRENT, do not include the current file."
   "Regex for the return result of a ripgrep query.")
 
 (defun org-forester-matches-in-files (regexp &optional match-result filter-fn omit-current)
-  "Find all matches for REGEXP in `org-forester-buffer-current-directory'.
+  "Find all matches for REGEXP in `org-forester-directory'.
 When MATCH-RESULT is non-nil, also return match result.
 Particularly, if MATCH-RESULT is symbol `line', return the whole
 line of match result instead of only matched part.
@@ -349,7 +354,7 @@ Use ripgrep for searching."
                                " "
                                (shell-quote-argument regexp)
                                " "
-                               org-forester-buffer-current-directory))
+                               org-forester-directory))
            (results (split-string (string-trim (shell-command-to-string rg-command)) "\n")))
       (seq-filter (if filter-fn
                       (lambda (res)
@@ -368,7 +373,7 @@ Use ripgrep for searching."
                             (save-match-data
                               (when (string-match org-forester-matches-re line)
                                 (append
-                                 `(:file ,(expand-file-name (match-string 1 line) org-forester-buffer-current-directory)
+                                 `(:file ,(expand-file-name (match-string 1 line) org-forester-directory)
                                    :row ,(string-to-number (match-string 2 line))
                                    :column ,(string-to-number (match-string 3 line)))
                                  (when match-result
