@@ -3,62 +3,115 @@
 #+email: g.hanwen@outlook.com
 #+options: toc:t
 
-Note: Org-forester is in its early phase. 
+Note: Org-forester is still under active development.
 
-Org-forester let you create your [[https://www.jonmsterling.com/tfmt-000V.xml][forest]] of notes in org-mode, built on [[https://github.com/org-roam/org-roam][org-roam]] and [[https://github.com/nobiot/org-transclusion][org-transclusion]]. It is meant to be used along with [[https://www.jonmsterling.com/jms-005P.xml][forester]], but it can also be used standalone. The plan is to make it able to edit and navigate your forest in Emacs and Org-mode and to export it into forester markups which can be further processed. 
+Org-forester let you create your forest of notes in org-mode.
+
+* TL;DR
+Org-forester is basically the set of the following components:
+- An org-forester buffer, which is like the org-roam buffer in that it displays information about current note, but in org-mode.
+- Several built-in information sections: context, backlinks, related notes and references.
+- A set of functions and options which makes [[https://github.com/nobiot/org-transclusion][transcluding]] able to alter the transcluded content.
+- A Zettelkasten-like workflow, which encourages making single note atomic and composing them by transclusion.
+
+Org-forester is not a note-taking tool; it only collects and shows information about your note, compared to packages like [[https://github.com/org-roam/org-roam][org-roam]] and [[https://protesilaos.com/emacs/denote][denote]], which manage the creation, navigation and management of notes.
+
+* Explanation
+** Workflow
+The workflow of Org-forester is heavily inspired by [[https://www.jonmsterling.com/jms-005P.xml][forester]]. It suggests:
+- A single note should be [[https://www.jonmsterling.com/tfmt-0007.xml][atomic]], that is, self-contained.
+- [[https://www.jonmsterling.com/tfmt-0005.xml][Hierarchy]] of notes, when needed, should be relative hierarchy rather than absolute, which can be achieved through [[https://github.com/nobiot/org-transclusion][transclusion]] (embedding would be more familiar to who used other note-taking tools before).
+
+To implement the workflow, Org-forester encourages user to create each note as a single Org-mode file which contains no headings but only frontmatters and some content, and create meta-notes which transcludes other notes when hierarchy is needed. Org-forester will automatically process the transclusion to create headings from =#+title:= file keyword.
+
+For example, if note A has the following content:
+#+begin_example
+#+title: Note A
+#+category: theorem
+
+The content of a very important theorem.
+#+end_example
+
+And note B transcludes it:
+#+begin_example
+#+title: Note B
+
+#+transclude: [[link:link-to-note-a]]
+#+end_example
+
+It will show like this:
+#+begin_example
+#+title: Note B
+
+* Theorem. Note A
+The content of a very important theorem. 
+#+end_example
+
+** Information about notes
+You can use =org-forester-buffer-toggle= to toggle the display of a buffer which shows useful information about current note.
+
+By default, there are several sections:
+- Contexts; each "context" is a note which transcludes current note.
+- Backlinks: show notes which links to the current note.
+- Related notes: show notes that the current note links to.
+- References: show reference notes that the current note cites (using [[https://orgmode.org/manual/Citations.html][org-cite]]). Reference notes are notes with a =#+reference: @key= file header in its frontmatter.
 
 * Installation
 Currently, the only way to install org-forester is clone the repository and add it to your ~load-path~ (or use package managers).
 
+Prerequisites include [[https://github.com/nobiot/org-transclusion][org-transclusion]] and [[https://github.com/BurntSushi/ripgrep][ripgrep]] (used to find contexts and backlinks).
+
 * Configuration
 ** With ~use-package~
 #+begin_src emacs-lisp
-  (use-package org-roam)
+(use-package org-transclusion
+  :hook (org-mode . org-transclusion-mode)
+  (add-to-list 'org-transclusion-add-functions
+               'org-forester-transclusion-add))
 
-  (use-package org-transclusion
-    :hook (org-mode . org-transclusion-mode))
-
-  (use-package org-forester
-    :config
-    (global-org-forester-mode))
+(use-package org-forester
+  :bind (("C-c n l" . org-forester-buffer-toggle))
+  :config
+  (defun org-forester--preview-latex ()
+    (org--latex-preview-region (point-min) (point-max)))
+    (add-to-list 'org-forester-buffer-postrender-functions
+                 #'org-forester--preview-latex))
 #+end_src
 
-* Getting Started
-Following the [[https://www.jonmsterling.com/tfmt-000W.xml][though behind forester]], org-forester presumes that all the notes each contains and only contains a single org-mode headline as its title, and encourages using transclusion to create contexts. To add a transclusion to a org-roam node, use ~M-x org-forester-add-transclusion~ (default binds to ~C-c n t~). Extra sections are added to org-roam buffer, allowing navigating through contexts and related notes.
+There are several customization options:
+- =org-forester-buffer-sections=: sections to show.
+- =org-forester-buffer-postrender-functions=: functions to run after the Org-forester buffer is rendered.
+- =org-forester-buffer-prerender-functions=: functions to run before the Org-forester buffer is rendered.
+
+See their document string for more detailed information.
 
 * Roadmap
 - [-] Edit
-  - [-] Org-roam integration
-    - [X] Display context section in Org-roam buffer
-    - [X] Display related section in Org-roam buffer
-    - [X] Display bibliography section in Org-roam buffer
-    - [ ] Display neighbors section in Org-roam buffer
-    - [ ] Display contribution information
-  - [-] Editing interface
-    - [X] Easy insertion of transclusion
-    - [ ] Hide ~#+TITLE~ line
-    - [ ] Easy renaming
-    - [ ] LaTeX preview respecting forester markup
-    - [ ] Transclusion shows taxon
+  - [-] Sections
+    - [X] Contexts section
+    - [X] Backlinks section
+    - [X] Related notes section
+    - [X] References section
+    - [ ] Neighbors section
+    - [ ] Display authors information
+  - [X] Editing interface
+    - [X] Transclusion shows headline properly
+    - [X] Transclusion shows category
 - [ ] Export
-  - [ ] Frontmatter (date, author, taxon, etc.)
+  - [ ] Frontmatter (date, author, category, etc.)
   - [ ] Links
-  - [ ] Transclusions
+  - [ ] Transclusion
   - [ ] Emphasis elements
-  - [ ] Plain LaTeX fragments without forester macros
-  - [ ] Advanced part of the forester markup language
-    - [ ] Functions defined by ~\def~
-    - [ ] Import / Export definitions
-    - [ ] Configured transclusion
-    - [ ] Fluid Binding
-    - [ ] Query
-    - [ ] XML attributes
-    - [ ] Object system
+  - [ ] LaTeX fragments
 
-* Known limitations
-- Edit
-  - Editing interface
-    - It is hard to preview LaTeX fragments with forester markup; only raw LaTeX can be previewed by ~org-latex-preview~
+* Credits
+This package cannot be made without the following works:
+
+[[https://www.jonmsterling.com/jms-005P.xml][Forester]]: as mentioned above, it heavily inspired this package.
+[[https://github.com/org-roam/org-roam][Org-roam]]: although it is not a dependency of the current version of Org-forester, it inspired this package a lot. Also, many of the code are modified based on its code.
+[[https://github.com/nobiot/org-transclusion][Org-transclusion]]: it makes transclusion in Org-mode possible. Some of the code are modified based on this package.
+[[https://github.com/magit/magit][Magit]]: the idea and lots of implementations of the =org-forester-section= part are based on =magit-section=.
+[[https://github.com/BurntSushi/ripgrep][Ripgrep]]: this package uses it as an external dependency.
 
 * License
 Org-forester is licensed under a GPLv3 license. For a full copy of the license, refer to [[./LICENSE][LICENSE]].
